@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 
+	vault "github.com/hashicorp/vault/api"
 	_ "github.com/lib/pq"
 )
 
@@ -39,7 +42,13 @@ func main() {
 //before connecting you have to create a database and a table in psql shell (just a base code improve these code as well as you need)
 
 func connectPostgresDB() *sql.DB {
-	connstring := "user=postgres dbname=postgres password='Pune@123' host=localhost port=5432 sslmode=disable"
+	var user string = ReadFromVault("appliation/go", "postgres.user")
+	var host string = ReadFromVault("appliation/go", "postgres.host")
+	var password string = ReadFromVault("appliation/go", "postgres.password")
+	var port string = ReadFromVault("appliation/go", "postgres.port")
+
+	connstring := "user=" + user + " dbname=bank password='" + password + "' host=" + host + " port=" + port + " sslmode=verify-full"
+
 	db, err := sql.Open("postgres", connstring)
 	if err != nil {
 		fmt.Println(err)
@@ -104,4 +113,28 @@ func Delete(db *sql.DB) {
 	} else {
 		fmt.Println("Data deleted")
 	}
+}
+
+func ReadFromVault(engine string, key string) string {
+	config := vault.DefaultConfig()
+
+	config.Address = "http://127.0.0.1:8200"
+
+	client, err := vault.NewClient(config)
+	if err != nil {
+		log.Fatalf("unable to initialize Vault client: %v", err)
+	}
+
+	// Authenticate
+	client.SetToken("myroot")
+
+	secret, err := client.KVv2("secret").Get(context.Background(), engine)
+	if err != nil {
+		log.Fatalf("unable to read secret: %v", err)
+	}
+
+	value, _ := secret.Data[key].(string)
+
+	return value
+
 }
